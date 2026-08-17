@@ -17,6 +17,29 @@ Timed shutoffs run in a detached child process guarded by a nonce in
 `/tmp/kuando-claude-state` — any newer state cancels older pending timers,
 so Claude and Codex can share the same light without fighting.
 
+## Multi-agent awareness
+
+Every session (Claude or Codex) registers itself in `/tmp/kuando-agents.json`
+(file-locked, keyed by the `session_id` each hook receives on stdin). The
+light reflects the whole fleet:
+
+- An agent finishes → **green + sound**, then back to **red** if any agent
+  is still running, otherwise off.
+- An agent needs attention → **orange + sound**, then back to **red** if any
+  agent is still running, otherwise off.
+- The green/orange window lasts **20s** normally, shortened to **10s** when
+  other agents are still working, so the busy state returns sooner.
+- Every timed state re-checks the fleet when it expires, so the light always
+  settles on red (busy) or off (idle). Orange never auto-repeats — there is
+  no hook event when a permission is *approved*, so a lingering "waiting"
+  mark can't be trusted after its 20s window.
+- A session ends or a permission is denied → that agent is deregistered;
+  the light falls back to red (others running), orange (others waiting),
+  or off (fleet idle).
+
+Crash safety: registry entries expire after 6h, so a session that died
+without firing `SessionEnd` can't hold the light red forever.
+
 ## Hook wiring
 
 ### Event → state mapping
@@ -25,9 +48,16 @@ so Claude and Codex can share the same light without fighting.
 |---|---|---|---|
 | `UserPromptSubmit` | `working` | ✅ | ✅ |
 | `Stop` | `done` | ✅ | ✅ |
-| `Notification` | `waiting` | ✅ | ✅ |
 | `PermissionRequest` | `waiting` | ✅ | ✅ |
 | `PermissionDenied` | `off` | ✅ | ❌ (event not supported by Codex) |
+| `SessionEnd` | `off` | ✅ | ✅ |
+
+Note: interrupting a turn (Esc) has no dedicated event — Claude Code fires
+`Stop` on interrupts too, so an interrupted turn shows the "done" state.
+
+Note: `Notification` is deliberately NOT hooked — it fires for idle
+reminders and other desktop-notification noise (e.g. what Ghostty surfaces),
+which caused spurious orange states.
 
 ### Claude Code — `~/.claude/settings.json`
 
@@ -73,4 +103,4 @@ found or bulk-rewritten later (grep for `kuando-busylight-hook`).
 ## Tuning
 
 Edit the constants at the top of `kuando.py`: colors, blink speed (`SLOW`),
-sounds/volume, and `DISPLAY_SECONDS` (how long done/waiting stay lit).
+sounds/volume, and `DISPLAY_SECONDS` / `DISPLAY_SECONDS_BUSY` (how long done/waiting stay lit; the busy value applies when other agents are still working).
