@@ -3,6 +3,11 @@
 Shared controller for a kuando Busylight, driven by Claude Code and Codex hooks
 through the kuandoHUB local HTTP API (`http://localhost:8989`).
 
+The full HTTP API reference (all actions, parameters, sound list, volume
+values, multi-device addressing) lives in
+[`docs/kuandoHUB Manual MacOS 2.0.0.pdf`](docs/kuandoHUB%20Manual%20MacOS%202.0.0.pdf)
+— consult it for any future changes to how `kuando.py` talks to the API.
+
 ## States
 
 | Command | Light | Sound |
