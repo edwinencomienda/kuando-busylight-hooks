@@ -1,7 +1,7 @@
 # kuando-busylight-hooks
 
-Shared controller for a kuando Busylight, driven by Claude Code and Codex hooks
-through the kuandoHUB local HTTP API (`http://localhost:8989`).
+Shared controller for a kuando Busylight, driven by Claude Code, Codex, and Pi
+hooks through the kuandoHUB local HTTP API (`http://localhost:8989`).
 
 The full HTTP API reference (all actions, parameters, sound list, volume
 values, multi-device addressing) lives in
@@ -20,11 +20,11 @@ values, multi-device addressing) lives in
 All HTTP calls fail silently (2s timeout) if kuandoHUB isn't running.
 Timed shutoffs run in a detached child process guarded by a nonce in
 `/tmp/kuando-claude-state` — any newer state cancels older pending timers,
-so Claude and Codex can share the same light without fighting.
+so Claude, Codex, and Pi can share the same light without fighting.
 
 ## Multi-agent awareness
 
-Every session (Claude or Codex) registers itself in `/tmp/kuando-agents.json`
+Every session (Claude, Codex, or Pi) registers itself in `/tmp/kuando-agents.json`
 (file-locked, keyed by the `session_id` each hook receives on stdin). The
 light reflects the whole fleet:
 
@@ -49,13 +49,13 @@ without firing `SessionEnd` can't hold the light red forever.
 
 ### Event → state mapping
 
-| Event | State | Claude Code | Codex |
-|---|---|---|---|
-| `UserPromptSubmit` | `working` | ✅ | ✅ |
-| `Stop` | `done` | ✅ | ✅ |
-| `PermissionRequest` | `waiting` | ✅ | ✅ |
-| `PermissionDenied` | `off` | ✅ | ❌ (event not supported by Codex) |
-| `SessionEnd` | `off` | ✅ | ✅ |
+| Event | State | Claude Code | Codex | Pi |
+|---|---|---|---|---|
+| `UserPromptSubmit` | `working` | ✅ | ✅ | ✅ (`agent_start`) |
+| `Stop` | `done` | ✅ | ✅ | ✅ (`agent_end`) |
+| `PermissionRequest` | `waiting` | ✅ | ✅ | ❌ (no permission-prompt event in Pi's extension API) |
+| `PermissionDenied` | `off` | ✅ | ❌ (event not supported by Codex) | ❌ |
+| `SessionEnd` | `off` | ✅ | ✅ | ✅ (`session_shutdown`) |
 
 Note: interrupting a turn (Esc) has no dedicated event — Claude Code fires
 `Stop` on interrupts too, so an interrupted turn shows the "done" state.
@@ -93,8 +93,16 @@ Same schema and same command entries, under the same event names (minus
 `PermissionDenied`). Do **not** set `"async": true` — Codex rejects async
 hooks; the script backgrounds its own timed work so it isn't needed.
 
+### Pi — `~/.pi/agent/extensions/kuando-busylight.ts`
+
+Pi uses TypeScript extensions instead of JSON hooks. The extension listens
+for `agent_start` / `agent_end` / `session_shutdown` and spawns `kuando.py`
+with the matching state, piping `{"session_id": "pi-<session>"}` on stdin so
+Pi sessions join the shared registry. There is no `waiting` state — Pi's
+extension API has no permission-prompt event.
+
 After editing, reload: Claude Code picks changes up via `/hooks` or a new
-session; Codex needs its sessions restarted.
+session; Codex and Pi need their sessions restarted.
 
 All entries carry the `# kuando-busylight-hook` comment marker so they can be
 found or bulk-rewritten later (grep for `kuando-busylight-hook`).
